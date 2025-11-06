@@ -6,8 +6,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (Puppeteer ya está instalado en la imagen)
-RUN npm ci --only=production
+# Install dependencies
+RUN npm install --production
 
 # Copy application files
 COPY . .
