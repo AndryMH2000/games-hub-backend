@@ -5,6 +5,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+"engines": {
+  "node": ">=18.0.0"
+},
+
     "dev": "nodemon server.js"
   },
   "keywords": [
