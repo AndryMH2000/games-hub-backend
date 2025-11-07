@@ -1,35 +1,49 @@
-const puppeteer = require('puppeteer');
+const { chromium } = require('playwright');
 
-// Browser configuration for Render.com
+// Browser configuration
 const getBrowserConfig = () => {
   if (process.env.NODE_ENV === 'production') {
     return {
+      headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu'
-      ],
-      headless: 'new'
+        '--disable-blink-features=AutomationControlled'
+      ]
     };
   }
-  return { headless: 'new' };
+  return { headless: true };
 };
+
+// Context configuration (helps avoid detection)
+const getContextConfig = () => ({
+  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  viewport: { width: 1920, height: 1080 },
+  locale: 'en-US',
+  timezoneId: 'America/New_York',
+  hasTouch: false,
+  isMobile: false
+});
 
 // Steam Scraper
 async function searchSteam(gameName) {
   let browser;
   try {
-    browser = await puppeteer.launch(getBrowserConfig());
-    const page = await browser.newPage();
+    browser = await chromium.launch(getBrowserConfig());
+    const context = await browser.newContext(getContextConfig());
+    const page = await context.newPage();
     
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    // Extra stealth
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    });
     
     const searchUrl = `https://store.steampowered.com/search/?term=${encodeURIComponent(gameName)}`;
-    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+
+    // Wait for results
+    await page.waitForSelector('#search_resultsRows', { timeout: 10000 }).catch(() => null);
 
     const gameData = await page.evaluate(() => {
       const firstResult = document.querySelector('#search_resultsRows > a');
@@ -44,7 +58,6 @@ async function searchSteam(gameName) {
 
       const image = firstResult.querySelector('img')?.src || null;
 
-      // Get platforms
       const platforms = [];
       if (firstResult.querySelector('.platform_img.win')) platforms.push('Windows');
       if (firstResult.querySelector('.platform_img.mac')) platforms.push('Mac');
@@ -65,7 +78,7 @@ async function searchSteam(gameName) {
     return gameData;
 
   } catch (error) {
-    console.error('Steam scraping error:', error);
+    console.error('Steam scraping error:', error.message);
     if (browser) await browser.close();
     return null;
   }
@@ -75,13 +88,16 @@ async function searchSteam(gameName) {
 async function searchEpic(gameName) {
   let browser;
   try {
-    browser = await puppeteer.launch(getBrowserConfig());
-    const page = await browser.newPage();
+    browser = await chromium.launch(getBrowserConfig());
+    const context = await browser.newContext(getContextConfig());
+    const page = await context.newPage();
     
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    });
     
-    const searchUrl = `https://store.epicgames.com/en-US/browse?q=${encodeURIComponent(gameName)}&sortBy=relevancy&sortDir=DESC&count=40`;
-    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    const searchUrl = `https://store.epicgames.com/en-US/browse?q=${encodeURIComponent(gameName)}&sortBy=relevancy&sortDir=DESC`;
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
 
     await page.waitForTimeout(3000);
 
@@ -92,7 +108,6 @@ async function searchEpic(gameName) {
       const title = firstResult.querySelector('[data-component="Message"]')?.textContent?.trim();
       const priceElement = firstResult.querySelector('[data-component="PriceLayout"]');
       const price = priceElement?.textContent?.trim() || 'N/A';
-
       const image = firstResult.querySelector('img')?.src || null;
 
       return {
@@ -110,7 +125,7 @@ async function searchEpic(gameName) {
     return gameData;
 
   } catch (error) {
-    console.error('Epic scraping error:', error);
+    console.error('Epic scraping error:', error.message);
     if (browser) await browser.close();
     return null;
   }
@@ -120,13 +135,16 @@ async function searchEpic(gameName) {
 async function searchPlayStation(gameName) {
   let browser;
   try {
-    browser = await puppeteer.launch(getBrowserConfig());
-    const page = await browser.newPage();
+    browser = await chromium.launch(getBrowserConfig());
+    const context = await browser.newContext(getContextConfig());
+    const page = await context.newPage();
     
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    });
     
     const searchUrl = `https://store.playstation.com/en-us/search/${encodeURIComponent(gameName)}`;
-    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
 
     await page.waitForTimeout(3000);
 
@@ -137,7 +155,6 @@ async function searchPlayStation(gameName) {
       const title = firstResult.querySelector('[data-qa*="product-name"]')?.textContent?.trim();
       const priceElement = firstResult.querySelector('[data-qa*="price"]');
       const price = priceElement?.textContent?.trim() || 'N/A';
-
       const image = firstResult.querySelector('img')?.src || null;
 
       return {
@@ -155,7 +172,7 @@ async function searchPlayStation(gameName) {
     return gameData;
 
   } catch (error) {
-    console.error('PlayStation scraping error:', error);
+    console.error('PlayStation scraping error:', error.message);
     if (browser) await browser.close();
     return null;
   }
@@ -165,13 +182,16 @@ async function searchPlayStation(gameName) {
 async function searchXbox(gameName) {
   let browser;
   try {
-    browser = await puppeteer.launch(getBrowserConfig());
-    const page = await browser.newPage();
+    browser = await chromium.launch(getBrowserConfig());
+    const context = await browser.newContext(getContextConfig());
+    const page = await context.newPage();
     
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    });
     
     const searchUrl = `https://www.xbox.com/en-us/search?q=${encodeURIComponent(gameName)}`;
-    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
 
     await page.waitForTimeout(3000);
 
@@ -182,7 +202,6 @@ async function searchXbox(gameName) {
       const title = firstResult.querySelector('.ProductCard-title')?.textContent?.trim();
       const priceElement = firstResult.querySelector('.ProductCard-price');
       const price = priceElement?.textContent?.trim() || 'N/A';
-
       const image = firstResult.querySelector('img')?.src || null;
 
       return {
@@ -200,7 +219,7 @@ async function searchXbox(gameName) {
     return gameData;
 
   } catch (error) {
-    console.error('Xbox scraping error:', error);
+    console.error('Xbox scraping error:', error.message);
     if (browser) await browser.close();
     return null;
   }
@@ -210,13 +229,16 @@ async function searchXbox(gameName) {
 async function searchNintendo(gameName) {
   let browser;
   try {
-    browser = await puppeteer.launch(getBrowserConfig());
-    const page = await browser.newPage();
+    browser = await chromium.launch(getBrowserConfig());
+    const context = await browser.newContext(getContextConfig());
+    const page = await context.newPage();
     
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    });
     
-    const searchUrl = `https://www.nintendo.com/us/search/#q=${encodeURIComponent(gameName)}&f:@fnsiteinfo47855573696e74656e646f53776974636886696e74656e646f537769746368=[Nintendo Switch]`;
-    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    const searchUrl = `https://www.nintendo.com/us/search/#q=${encodeURIComponent(gameName)}`;
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
 
     await page.waitForTimeout(3000);
 
@@ -227,7 +249,6 @@ async function searchNintendo(gameName) {
       const title = firstResult.querySelector('.coveo-title')?.textContent?.trim();
       const priceElement = firstResult.querySelector('.coveo-result-cell.price');
       const price = priceElement?.textContent?.trim() || 'N/A';
-
       const image = firstResult.querySelector('img')?.src || null;
 
       return {
@@ -245,7 +266,7 @@ async function searchNintendo(gameName) {
     return gameData;
 
   } catch (error) {
-    console.error('Nintendo scraping error:', error);
+    console.error('Nintendo scraping error:', error.message);
     if (browser) await browser.close();
     return null;
   }

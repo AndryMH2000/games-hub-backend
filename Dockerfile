@@ -1,25 +1,25 @@
-FROM ghcr.io/puppeteer/puppeteer:21.5.2
+FROM mcr.microsoft.com/playwright:v1.40.0-jammy
 
-# Cambiar a usuario root temporalmente
+# Cambiar a usuario root
 USER root
 
 # Set working directory
 WORKDIR /app
 
-# Dar permisos al directorio
-RUN chown -R pptruser:pptruser /app
+# Dar permisos
+RUN chown -R pwuser:pwuser /app
 
-# Volver al usuario pptruser
-USER pptruser
+# Volver a usuario seguro
+USER pwuser
 
 # Copy package files
-COPY --chown=pptruser:pptruser package*.json ./
+COPY --chown=pwuser:pwuser package*.json ./
 
 # Install dependencies
 RUN npm install --production
 
 # Copy application files
-COPY --chown=pptruser:pptruser . .
+COPY --chown=pwuser:pwuser . .
 
 # Expose port
 EXPOSE 3000
