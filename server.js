@@ -88,6 +88,7 @@ app.post('/api/search', async (req, res) => {
 });
 
 // Batch search endpoint
+// Batch search endpoint
 app.post('/api/batch-search', async (req, res) => {
   try {
     const { games } = req.body;
@@ -99,11 +100,11 @@ app.post('/api/batch-search', async (req, res) => {
     console.log(`Batch searching ${games.length} games`);
 
     const results = [];
-    
+
     // Process games one by one
     for (const gameName of games) {
       try {
-        const gameResults = await Promise.allSettled([
+        const storesResults = await Promise.allSettled([
           scrapers.searchSteam(gameName),
           scrapers.searchEpic(gameName),
           scrapers.searchPlayStation(gameName),
@@ -111,29 +112,39 @@ app.post('/api/batch-search', async (req, res) => {
           scrapers.searchNintendo(gameName)
         ]);
 
+        const storeValues = storesResults.map(r => r.status === 'fulfilled' ? r.value : null);
+
         const gameData = {
           name: gameName,
           stores: {
-            steam: gameResults[0].status === 'fulfilled' ? gameResults[0].value : null,
-            epic: gameResults[1].status === 'fulfilled' ? gameResults[1].value : null,
-            playstation: gameResults[2].status === 'fulfilled' ? gameResults[2].value : null,
-            xbox: gameResults[3].status === 'fulfilled' ? gameResults[3].value : null,
-            nintendo: gameResults[4].status === 'fulfilled' ? gameResults[4].value : null
-          }
+            steam: storeValues[0],
+            epic: storeValues[1],
+            playstation: storeValues[2],
+            xbox: storeValues[3],
+            nintendo: storeValues[4]
+          },
+          bestPrice: null,
+          platforms: [],
+          genres: [],
+          images: []
         };
 
-        // Aggregate data
-        const validStores = Object.values(gameData.stores).filter(store => store !== null);
-        
+        const validStores = Object.values(gameData.stores).filter(s => s !== null);
+
         if (validStores.length > 0) {
           const prices = validStores
             .filter(s => s.price !== null && s.price !== 'Free')
             .map(s => parseFloat(s.price.replace(/[^0-9.]/g, '')));
-          
-          gameData.bestPrice = prices.length > 0 ? `$${Math.min(...prices).toFixed(2)}` : null;
+
+          if (prices.length > 0) {
+            gameData.bestPrice = `$${Math.min(...prices).toFixed(2)}`;
+          }
+
           gameData.platforms = [...new Set(validStores.flatMap(s => s.platforms || []))];
           gameData.genres = [...new Set(validStores.flatMap(s => s.genres || []))];
-          gameData.image = validStores.find(s => s.image)?.image || null;
+          gameData.images = validStores
+            .map(s => s.image)
+            .filter(img => img !== null);
         }
 
         results.push(gameData);
@@ -141,11 +152,11 @@ app.post('/api/batch-search', async (req, res) => {
         // Delay between games
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-      } catch (error) {
-        console.error(`Error searching ${gameName}:`, error);
+      } catch (err) {
+        console.error(`Error processing ${gameName}:`, err);
         results.push({
           name: gameName,
-          error: error.message,
+          error: err.message,
           stores: {}
         });
       }
@@ -157,10 +168,4 @@ app.post('/api/batch-search', async (req, res) => {
     console.error('Batch search error:', error);
     res.status(500).json({ error: 'Internal server error', message: error.message });
   }
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 API endpoint: http://localhost:${PORT}/api/search`);
 });
